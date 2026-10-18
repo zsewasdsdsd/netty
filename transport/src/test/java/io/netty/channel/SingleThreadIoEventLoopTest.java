@@ -93,19 +93,34 @@ public class SingleThreadIoEventLoopTest {
         java.util.concurrent.CountDownLatch releaseTask = new java.util.concurrent.CountDownLatch(1);
         SingleThreadIoEventLoop loop = new SingleThreadIoEventLoop(null,
                 Executors.defaultThreadFactory(), executor -> new TestIoHandler(executor) {
+            private IoHandle registeredHandle;
+
             @Override
             public IoRegistration register(IoHandle handle) {
+                registeredHandle = handle;
                 registrationOpen.set(true);
                 return super.register(handle);
             }
 
             @Override
             public void prepareToDestroy() {
-                registrationOpen.set(false);
+                if (registeredHandle != null) {
+                    try {
+                        registeredHandle.close();
+                    } catch (Exception e) {
+                        throw new IllegalStateException("Unable to close test IO handle", e);
+                    }
+                    registeredHandle = null;
+                }
             }
         });
         try {
-            loop.register(new TestIoHandle()).sync();
+            loop.register(new TestIoHandle() {
+                @Override
+                public void close() {
+                    registrationOpen.set(false);
+                }
+            }).sync();
             assertTrue(registrationOpen.get());
             loop.execute(() -> {
                 taskStarted.countDown();
@@ -136,15 +151,25 @@ public class SingleThreadIoEventLoopTest {
         java.util.concurrent.CountDownLatch continueTask = new java.util.concurrent.CountDownLatch(1);
         SingleThreadIoEventLoop loop = new SingleThreadIoEventLoop(null,
                 Executors.defaultThreadFactory(), executor -> new TestIoHandler(executor) {
+            private IoHandle registeredHandle;
+
             @Override
             public IoRegistration register(IoHandle handle) {
+                registeredHandle = handle;
                 registrationOpen.set(true);
                 return super.register(handle);
             }
 
             @Override
             public void prepareToDestroy() {
-                registrationOpen.set(false);
+                if (registeredHandle != null) {
+                    try {
+                        registeredHandle.close();
+                    } catch (Exception e) {
+                        throw new IllegalStateException("Unable to close test IO handle", e);
+                    }
+                    registeredHandle = null;
+                }
             }
         });
         try {
@@ -154,7 +179,12 @@ public class SingleThreadIoEventLoopTest {
                     continueTask.await();
                     // Simulate a registration task which was queued before shutdown
                     // but executes only after shutdown has already begun.
-                    loop.register(new TestIoHandle());
+                    loop.register(new TestIoHandle() {
+                        @Override
+                        public void close() {
+                            registrationOpen.set(false);
+                        }
+                    });
                     registeredDuringShutdown.set(registrationOpen.get());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
