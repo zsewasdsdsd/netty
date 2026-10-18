@@ -179,6 +179,9 @@ public class SingleThreadIoEventLoopTest {
                     continueTask.await();
                     // Simulate a registration task which was queued before shutdown
                     // but executes only after shutdown has already begun.
+                    if (!loop.isShuttingDown()) {
+                        throw new AssertionError("Registration must occur after shutdown begins");
+                    }
                     loop.register(new TestIoHandle() {
                         @Override
                         public void close() {
