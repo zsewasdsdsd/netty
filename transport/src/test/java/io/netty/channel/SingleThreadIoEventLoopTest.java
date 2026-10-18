@@ -128,6 +128,49 @@ public class SingleThreadIoEventLoopTest {
         }
     }
 
+    @Test
+    void testShutdownClosesRegistrationCreatedByPendingTask() throws Exception {
+        AtomicBoolean registrationOpen = new AtomicBoolean();
+        java.util.concurrent.CountDownLatch taskStarted = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch continueTask = new java.util.concurrent.CountDownLatch(1);
+        SingleThreadIoEventLoop loop = new SingleThreadIoEventLoop(null,
+                Executors.defaultThreadFactory(), executor -> new TestIoHandler(executor) {
+            @Override
+            public IoRegistration register(IoHandle handle) {
+                registrationOpen.set(true);
+                return super.register(handle);
+            }
+
+            @Override
+            public void prepareToDestroy() {
+                registrationOpen.set(false);
+            }
+        });
+        try {
+            loop.execute(() -> {
+                taskStarted.countDown();
+                try {
+                    continueTask.await();
+                    // Simulate a registration task which was queued before shutdown
+                    // but executes only after shutdown has already begun.
+                    loop.register(new TestIoHandle());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            assertTrue(taskStarted.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            loop.shutdownGracefully(0, 5, java.util.concurrent.TimeUnit.SECONDS);
+            continueTask.countDown();
+            assertTrue(loop.terminationFuture().await(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertFalse(registrationOpen.get(),
+                    "A channel registered during shutdown must not survive termination");
+        } finally {
+            continueTask.countDown();
+            loop.shutdownGracefully(0, 5, java.util.concurrent.TimeUnit.SECONDS)
+                    .await(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
     private static final class TestThreadFactory implements ThreadFactory {
         final LinkedBlockingQueue<Thread> threads = new LinkedBlockingQueue<>();
         @Override
