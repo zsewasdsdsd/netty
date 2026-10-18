@@ -320,8 +320,11 @@ public class SingleThreadIoEventLoop extends SingleThreadEventLoop implements Io
         // confirmShutdown() may run registration tasks after the last call to
         // prepareToDestroy() in run(). Close any remaining registrations before
         // destroying the handler, including when the quiet period is zero.
-        ioHandler.prepareToDestroy();
-        ioHandler.destroy();
+        try {
+            ioHandler.prepareToDestroy();
+        } finally {
+            ioHandler.destroy();
+        }
     }
 
     @Override
