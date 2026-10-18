@@ -317,6 +317,10 @@ public class SingleThreadIoEventLoop extends SingleThreadEventLoop implements Io
     @Override
     protected final void cleanup() {
         assert inEventLoop();
+        // confirmShutdown() may run registration tasks after the last call to
+        // prepareToDestroy() in run(). Close any remaining registrations before
+        // destroying the handler, including when the quiet period is zero.
+        ioHandler.prepareToDestroy();
         ioHandler.destroy();
     }
 
