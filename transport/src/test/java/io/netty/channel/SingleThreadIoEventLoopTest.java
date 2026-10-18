@@ -131,6 +131,7 @@ public class SingleThreadIoEventLoopTest {
     @Test
     void testShutdownClosesRegistrationCreatedByPendingTask() throws Exception {
         AtomicBoolean registrationOpen = new AtomicBoolean();
+        AtomicBoolean registeredDuringShutdown = new AtomicBoolean();
         java.util.concurrent.CountDownLatch taskStarted = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch continueTask = new java.util.concurrent.CountDownLatch(1);
         SingleThreadIoEventLoop loop = new SingleThreadIoEventLoop(null,
@@ -154,6 +155,7 @@ public class SingleThreadIoEventLoopTest {
                     // Simulate a registration task which was queued before shutdown
                     // but executes only after shutdown has already begun.
                     loop.register(new TestIoHandle());
+                    registeredDuringShutdown.set(registrationOpen.get());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -162,6 +164,8 @@ public class SingleThreadIoEventLoopTest {
             loop.shutdownGracefully(0, 5, java.util.concurrent.TimeUnit.SECONDS);
             continueTask.countDown();
             assertTrue(loop.terminationFuture().await(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(registeredDuringShutdown.get(),
+                    "The regression test must actually register an IO handle during shutdown");
             assertFalse(registrationOpen.get(),
                     "A channel registered during shutdown must not survive termination");
         } finally {
